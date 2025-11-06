@@ -1,226 +1,192 @@
-// Login.js
+// Login.js — "obligatorio" solo al enviar + validación en tiempo real
+// y "Correo o contraseña incorrectos" SOLO si email y password están completos
 import React, { useEffect, useState } from "react";
-import { 
-  ImageBackground, 
-  Image, 
-  TextInput, 
-  TouchableOpacity, 
-  Text, 
-  View, 
-  StyleSheet, 
+import {
+  ImageBackground,
+  Image,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  View,
+  StyleSheet,
   KeyboardAvoidingView,
   ScrollView,
-  Platform
+  Platform,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
-
-import {
-  signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithCredential,
-  signInWithPopup, 
-} from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../src/config/firebaseConfig";
 
-// Expo Auth Session (Google)
-import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
-import { makeRedirectUri } from "expo-auth-session";
-
-if (Platform.OS !== "web") {
-  WebBrowser.maybeCompleteAuthSession();
-}
+const HEADER_HEIGHT = 60; 
+const EMAIL_MIN = 13;
+const EMAIL_MAX = 30;
+const PASS_MIN = 6;
+const PASS_MAX = 25;
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 export default function Login({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loginError, setLoginError] = useState("");
 
-  //  constantes para web / redirect
-  const isWeb = Platform.OS === "web";
-  const redirectUri = "https://auth.expo.io/@TomasVillagra/mobileStart";
+  // controla cuándo mostrar "obligatorio"
+  const [submitted, setSubmitted] = useState(false);
 
-  // REEMPLAZADO: hook de Google con scopes + responseType + redirectUri
-  const [request, response, promptAsync] = isWeb
-    ? [null, null, async () => {}] 
-    : Google.useAuthRequest({
-       
-        expoClientId:
-          "760370524623-lnhvkq0gjs99ggra9kij5i0uovrcp7vq.apps.googleusercontent.com",
-        
-        iosClientId: "760370524623-5u29vsm2j39pso13p0g0egn1i3mvrrhu.apps.googleusercontent.com",
-        //androidClientId: "",
-        
-        webClientId:
-          "760370524623-lnhvkq0gjs99ggra9kij5i0uovrcp7vq.apps.googleusercontent.com",
-        
-        
-        scopes: ["openid", "profile", "email"],
-        responseType: "id_token",
-        redirectUri,
-      });
+  // errores por campo + error de login del servidor
+  const [errors, setErrors] = useState({ email: "", password: "", login: "" });
 
-
+  // validación en tiempo real (formato/longitud). "Obligatorio" solo al enviar.
   useEffect(() => {
-    if (!isWeb) {
-      console.log("redirectUri:", redirectUri);
-      console.log("AuthRequest OK:", !!request);
+    const trimmedEmail = email.trim();
+    const trimmedPass = password.trim();
+
+    const e = { email: "", password: "" };
+
+    // EMAIL
+    if (trimmedEmail) {
+      if (trimmedEmail.length < EMAIL_MIN)
+        e.email = `El correo debe tener al menos ${EMAIL_MIN} caracteres.`;
+      else if (trimmedEmail.length > EMAIL_MAX)
+        e.email = `El correo no puede superar ${EMAIL_MAX} caracteres.`;
+      else if (!emailRegex.test(trimmedEmail))
+        e.email = "Formato de correo inválido.";
+    } else if (submitted) {
+      e.email = "El correo es obligatorio.";
     }
-  }, [request]);
 
-  // procesar respuesta (con fallback a accessToken)
-  useEffect(() => {
-    const go = async () => {
-      if (isWeb || response?.type !== "success") return;
+    // PASSWORD
+    if (trimmedPass) {
+      if (trimmedPass.length < PASS_MIN)
+        e.password = `La contraseña debe tener al menos ${PASS_MIN} caracteres.`;
+      else if (trimmedPass.length > PASS_MAX)
+        e.password = `La contraseña no puede superar ${PASS_MAX} caracteres.`;
+    } else if (submitted) {
+      e.password = "La contraseña es obligatoria.";
+    }
 
-      const idToken =
-        response?.authentication?.idToken ?? response?.params?.id_token ?? null;
-      const accessToken =
-        response?.authentication?.accessToken ??
-        response?.params?.access_token ??
-        null;
+    // 
+    setErrors((prev) => ({ ...prev, email: e.email, password: e.password }));
+  }, [email, password, submitted]);
 
-      if (!idToken && !accessToken) {
-        setLoginError("No se recibió token de Google (idToken/accessToken).");
-        return;
-      }
-
-      const credential = idToken
-        ? GoogleAuthProvider.credential(idToken)
-        : GoogleAuthProvider.credential(null, accessToken);
-
-      await signInWithCredential(auth, credential);
-    };
-
-    go().catch((e) => {
-      console.log(e);
-      setLoginError("No se pudo iniciar sesión con Google.");
-    });
-  }, [response]);
-
-  // Login con email y contraseña
   const handleLogin = async () => {
-    setLoginError("");
+    setSubmitted(true); // activa mensajes "obligatorio" si hay vacíos
 
-    if (!email || !password) {
-      setLoginError("Por favor ingrese correo y contraseña.");
+    const trimmedEmail = email.trim();
+    const trimmedPass = password.trim();
+
+    // Si falta alguno, NO mostramos error de credenciales
+    if (!trimmedEmail || !trimmedPass) {
+      setErrors((prev) => ({ ...prev, login: "" }));
+      return;
+    }
+
+    // Si hay errores de formato/longitud, tampoco intentamos login ni mostramos error de credenciales
+    if (errors.email || errors.password) {
+      setErrors((prev) => ({ ...prev, login: "" }));
       return;
     }
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPass);
+      // navegación la maneja el observer de auth
     } catch (error) {
-      setLoginError("Correo o contraseña incorrectos.");
+      // Solo aca, con ambos campos completos y válidos, mostramos el error de credenciales
+      setErrors((prev) => ({
+        ...prev,
+        login: "Correo o contraseña incorrectos.",
+      }));
     }
   };
 
-  // Google → WEB usa Popup / MÓVIL usa AuthSession
-  const handleGoogleLogin = async () => {
-    setLoginError("");
-    try {
-      if (isWeb) {
-        const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
-
-      } else {
-        await promptAsync({ useProxy: true, redirectUri });
-      }
-    } catch (e) {
-      console.log(e);
-      setLoginError("No se pudo iniciar sesión con Google.");
-    }
+  // Al escribir, limpiamos el error de credenciales (para no mostrarlo con un solo campo)
+  const onChangeEmail = (t) => {
+    setEmail(t.replace(/\s+/g, "").slice(0, EMAIL_MAX));
+    if (errors.login) setErrors((prev) => ({ ...prev, login: "" }));
+  };
+  const onChangePass = (t) => {
+    setPassword(t.slice(0, PASS_MAX));
+    if (errors.login) setErrors((prev) => ({ ...prev, login: "" }));
   };
 
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.select({ ios: "padding", android: "padding" })}
-      keyboardVerticalOffset={Platform.select({ ios: 0, android: 110 })}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        overScrollMode="never"
+        bounces={false}
+      >
         <ImageBackground
           source={require("../assets/fondo.png")}
           style={styles.background}
           resizeMode="cover"
         >
+          {/* Header */}
           <View style={styles.customHeader}>
             <Text style={styles.customHeaderText}>Pizzeria-Rex</Text>
           </View>
 
-          <Image 
-            source={require("../assets/logo.png")} 
-            style={styles.logo}
-            resizeMode="contain"
-          />
-      
-          <View style={styles.formContainer}>
-            <Text style={styles.title}>Iniciar Sesión</Text>
+          {/* Contenido centrado y subido */}
+          <View style={styles.contentWrapper}>
+            <Image
+              source={require("../assets/logo.png")}
+              style={styles.logo}
+              resizeMode="contain"
+            />
 
-            {/* Email */}
-            <View style={styles.inputContainer}>
-              <FontAwesome name="envelope" size={20} color="#fff" style={styles.icon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Ingrese su correo"
-                placeholderTextColor="#aaa"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
+            <View style={styles.formContainer}>
+              <Text style={styles.title}>Iniciar Sesión</Text>
 
-            {/* Password */}
-            <View style={styles.inputContainer}>
-              <FontAwesome name="lock" size={20} color="#fff" style={styles.icon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Ingrese su contraseña"
-                placeholderTextColor="#aaa"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <FontAwesome name={showPassword ? "eye-slash" : "eye"} size={20} color="#fff" />
+              {/* EMAIL */}
+              <View style={styles.inputContainer}>
+                <FontAwesome name="envelope" size={20} color="#fff" style={styles.icon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ingrese su correo"
+                  placeholderTextColor="#aaa"
+                  value={email}
+                  onChangeText={onChangeEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+              {!!errors.email && <Text style={styles.fieldError}>{errors.email}</Text>}
+
+              {/* PASSWORD */}
+              <View style={styles.inputContainer}>
+                <FontAwesome name="lock" size={20} color="#fff" style={styles.icon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ingrese su contraseña"
+                  placeholderTextColor="#aaa"
+                  value={password}
+                  onChangeText={onChangePass}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <FontAwesome name={showPassword ? "eye-slash" : "eye"} size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              {!!errors.password && <Text style={styles.fieldError}>{errors.password}</Text>}
+
+              {!!errors.login && <Text style={styles.errorText}>{errors.login}</Text>}
+
+              {/* Botón */}
+              <TouchableOpacity style={styles.button} onPress={handleLogin}>
+                <Text style={styles.buttonText}>Ingresar</Text>
               </TouchableOpacity>
-            </View>
 
-            {loginError ? <Text style={styles.errorText}>{loginError}</Text> : null}
-
-            {/* Botón login */}
-            <TouchableOpacity style={styles.button} onPress={handleLogin}>
-              <Text style={styles.buttonText}>Ingresar</Text>
-            </TouchableOpacity>
-
-            {/* Separador */}
-            <View style={styles.separatorContainer}>
-              <View style={styles.separatorLine} />
-              <Text style={styles.separatorText}>O</Text>
-              <View style={styles.separatorLine} />
-            </View>
-
-            {/* Botón Google */}
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={handleGoogleLogin}
-              disabled={!isWeb && !request}
-            >
-              <FontAwesome name="google" size={20} color="#4285f4" style={styles.googleIcon} />
-              <Text style={styles.googleButtonText}></Text>
-            </TouchableOpacity>
-
-            {/* Crear cuenta */}
-            <Text style={styles.signUpLine}>
-              ¿No tenés cuenta aún?{" "}
-              <Text
-                style={styles.signUpLink}
-                onPress={() => navigation.navigate("SignUp")}
-              >
-                Regístrate
+              {/* Crear cuenta */}
+              <Text style={styles.signUpLine}>
+                ¿No tenés cuenta aún?{" "}
+                <Text style={styles.signUpLink} onPress={() => navigation.navigate("SignUp")}>
+                  Regístrate
+                </Text>
               </Text>
-            </Text>
+            </View>
           </View>
         </ImageBackground>
       </ScrollView>
@@ -229,143 +195,97 @@ export default function Login({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  background: { 
-    flex: 1, 
-    width: "100%", 
-    height: "100%", 
-    justifyContent: "center", 
-    alignItems: "center" 
+  background: { flex: 1, width: "100%", height: "100%" },
+  contentWrapper: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: HEADER_HEIGHT - 50, //  para subir logo hacia arriba
+    paddingBottom: 32,
   },
-  logo: { 
-    width: 300, 
-    height: 150, 
-    marginBottom: 15,
-    alignSelf: "center",
-    maxWidth: 420,
-    transform: [{ translateY: -80 }],
+  customHeader: {
+    position: "absolute",
+    top: 0,
+    width: "100%",
+    height: HEADER_HEIGHT,
+    paddingHorizontal: 16,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
   },
-  customHeader: { 
-    position: "absolute", 
-    top: 0, 
-    width: "100%", 
-    paddingVertical: 15, 
-    backgroundColor: "rgba(0,0,0,0.65)", 
-    alignItems: "center" 
-  },
-  customHeaderText: { 
-    color: "#fff", 
+  customHeaderText: { color: "#fff", 
     fontSize: 18, 
-    fontWeight: "bold" 
-  },
-  formContainer: { 
-    backgroundColor: "rgba(0,0,0,0.65)", 
-    padding: 50, 
-    borderRadius: 10,
-    width: "80%", 
+    fontWeight: "bold" },
+
+  logo: { width: 280, 
+    height: 140, 
+    marginBottom: 10, 
+    alignSelf: "center" },
+
+  formContainer: {
+    backgroundColor: "rgba(0,0,0,0.65)",
+    padding: 28,
+    borderRadius: 12,
+    width: "80%",
     alignSelf: "center",
     maxWidth: 420,
-    transform: [{ translateY: -80 }],
   },
-  title: { 
-    fontSize: 20, 
+  title: { fontSize: 20, 
     fontWeight: "bold", 
     color: "#fff", 
     textAlign: "center", 
-    marginBottom: 20 
-  },
-  errorText: {
-    color: "#ff6b6b",
-    textAlign: "center",
-    marginBottom: 15,
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  inputContainer: { 
+    marginBottom: 18 },
+  fieldError: { color: "#ffb3b3", 
+    fontSize: 12, 
+    marginTop: -6, 
+    marginBottom: 8 },
+  errorText: { color: "#ff6b6b", 
+    textAlign: "center", 
+    marginBottom: 15, 
+    fontSize: 14, 
+    fontWeight: "bold" },
+  inputContainer: {
     flexDirection: "row", 
-    alignItems: "center", 
+    alignItems: "center",
     borderBottomWidth: 1, 
-    borderColor: "#fff", 
-    marginBottom: 20 
+    borderColor: "#fff",
+    marginBottom: 20,
   },
-  icon: { 
-    marginRight: 10 
-  },
-  input: { 
-    flex: 1, 
+  icon: { marginRight: 10 },
+  input: { flex: 1, 
     color: "#fff", 
-    paddingVertical: 8 
-  },
+    paddingVertical: 8 },
   button: {
     backgroundColor: "#C51F1F",
     paddingVertical: 10,
-    paddingHorizontal: 14,
+     paddingHorizontal: 14,
     borderRadius: 9999,
-    alignItems: "center",
-    alignSelf: "center",
-    width: "70%",
+     alignItems: "center",
+    alignSelf: "center", 
+    width: "70%", 
     marginTop: 10,
   },
-  buttonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-  separatorContainer: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    marginVertical: 20 
-  },
-  separatorLine: { 
-    flex: 1, 
-    height: 1, 
-    backgroundColor: "#fff", 
-    opacity: 0.3 
-  },
-  separatorText: { 
-    color: "#fff", 
-    paddingHorizontal: 15, 
-    fontSize: 14 
-  },
-  googleButton: { 
-    backgroundColor: "#fff",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 9999,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    alignSelf: "center",
-    width: "70%",
-    marginBottom: 10,
-  },
-  googleIcon: { 
-    marginRight: 10 
-  },
-  googleButtonText: { 
-    color: "#333",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-  signUpText: { 
-    marginTop: 15,
-    color: "#ffb74d",
-    textAlign: "center",
-    textDecorationLine: "underline",  
-  },
-  signUpText1: { 
-    marginTop: 15,
-    color: "#ffb74d",
-    textAlign: "center",
-  },
-  signUpLine: {
-    marginTop: 15,
-    color: "#edededff",
-    textAlign: "center",
-  },
-  signUpLink: {
-    color: "#f40606ff",
-    
-    fontWeight: "bold",
-  },
+  buttonText: { color: "#fff", 
+    fontSize: 15, 
+    fontWeight: "bold" },
+  signUpLine: { marginTop: 15, 
+    color: "#edededff", 
+    textAlign: "center" },
+  signUpLink: { color: "#f40606ff", 
+    fontWeight: "bold" },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
 

@@ -22,8 +22,11 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
+        
       },
-      "edgeToEdgeEnabled": true
+      
+      "softwareKeyboardLayoutMode": "resize",
+      "edgeToEdgeEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"

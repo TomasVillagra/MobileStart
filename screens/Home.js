@@ -16,15 +16,15 @@ import {
 } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
-import { auth, db } from '../src/config/firebaseConfig'; // 👈 db
-import { collection, onSnapshot } from 'firebase/firestore'; // 👈 Firestore
-import { PieChart } from 'react-native-chart-kit'; // 👈 PieChart agregado
+import { auth, db } from '../src/config/firebaseConfig'; // db
+import { collection, onSnapshot } from 'firebase/firestore'; //  Firestore
+import { PieChart } from 'react-native-chart-kit'; //  PieChart agregado
 
 export default function Home({ navigation }) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedSection, setSelectedSection] = useState('dashboard');
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
-  const [insumosCriticos, setInsumosCriticos] = useState(0); // 👈 KPI
+  const [insumosCriticos, setInsumosCriticos] = useState(0); // KPI
 
   const userName =
     (auth.currentUser &&
@@ -83,24 +83,19 @@ export default function Home({ navigation }) {
   // -----------------------------
   // Datos de demo (no tocar keys)
   // -----------------------------
-  const [pedidos] = useState([
-    { id: 1025, mesa: 'Mesa 1', empleado: 'Jose', estado: 'Pendiente', total: 2500 },
-    { id: 1030, mesa: 'Mesa 3', empleado: 'Maria', estado: 'En progreso', total: 1800 },
-    { id: 1015, mesa: 'Mesa 2', empleado: 'Ana', estado: 'Entregado', total: 3200 },
-    { id: 1022, mesa: 'Mesa 4', empleado: 'Jose', estado: 'Pagado', total: 1500 }
-  ]);
+  
 
   const [resumenVentas] = useState({
     efectivo: 11000,
-    tarjeta: 7000, // Transferencia
-    qr: 3000,      // Débito
-    total: 21000   // (ya no se usa para mostrar; ahora se calcula)
+    tarjeta: 9000, // 
+    qr: 6000,      // 
+    
   });
 
   const { width: winW } = useWindowDimensions();
   const chartW = Math.max(0, winW - 36 - 32);
 
-  // ✅ Total del día calculado por suma de métodos
+  // Total del día calculado por suma de métodos
   const totalDia =
     (Number(resumenVentas.efectivo) || 0) +
     (Number(resumenVentas.tarjeta) || 0) +
@@ -144,22 +139,7 @@ export default function Home({ navigation }) {
     }
   };
 
-  const getEstadoColor = (estado) => {
-    switch (estado) {
-      case 'Pendiente':
-        return '#FFB020';
-      case 'En progreso':
-        return '#FF6E40';
-      case 'Entregado':
-        return '#43A047';
-      case 'Pagado':
-        return '#1E88E5';
-      default:
-        return '#757575';
-    }
-  };
-
-  const getPedidosPendientes = () => pedidos.filter((p) => p.estado === 'Pendiente').length;
+  
 
   // Menú
   const menuItems = [
@@ -181,28 +161,7 @@ export default function Home({ navigation }) {
     }
   };
 
-  const renderPedidoCard = ({ item }) => (
-    <View style={styles.pedidoCard}>
-      <View style={styles.pedidoHeader}>
-        <Text style={styles.pedidoId}>#{item.id}</Text>
-        <View style={[styles.estadoBadge, { backgroundColor: getEstadoColor(item.estado) }]}>
-          <Text style={styles.estadoText}>{item.estado}</Text>
-        </View>
-      </View>
-      <View style={styles.pedidoRow}>
-        <FontAwesome name="cutlery" size={14} color="#C9C9C9" />
-        <Text style={styles.pedidoMesa}>{item.mesa}</Text>
-      </View>
-      <View style={styles.pedidoRow}>
-        <FontAwesome name="user" size={14} color="#C9C9C9" />
-        <Text style={styles.pedidoEmpleado}>Empleado: {item.empleado}</Text>
-      </View>
-      <View style={styles.pedidoRowEnd}>
-        <FontAwesome name="dollar" size={14} color="#76D275" />
-        <Text style={styles.pedidoTotal}>{money(item.total)}</Text>
-      </View>
-    </View>
-  );
+  
 
   const KpiCard = ({ icon, label, value, bg }) => (
     <View style={[styles.statCard, { backgroundColor: bg }]}>
@@ -218,12 +177,12 @@ export default function Home({ navigation }) {
     <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
       {/* KPIs */}
       <View style={styles.statsContainer}>
-        <KpiCard icon="clock-o" label="Pedidos pendientes" value={getPedidosPendientes()} bg="#2C2C2E" />
+        <KpiCard icon="clock-o" label="Pedidos pendientes" value="4" bg="#2C2C2E" />
         <KpiCard icon="dollar" label="Ventas del día" value={money(totalDia)} bg="#2C2C2E" />
       </View>
 
       <View style={styles.statsContainer}>
-        {/* 👇 Tap: abre Inventario con filtros Activo + Por debajo */}
+        {/* Tap: abre Inventario con filtros Activo + Por debajo */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => navigation.navigate('Inventario', { presetEstado: 'activo', presetNivel: 'debajo' })}
@@ -273,29 +232,40 @@ export default function Home({ navigation }) {
           </View>
 
           {/* Gráfico de torta por método de pago (sin números ni leyendas) */}
-        <View style={{ marginTop: 20, alignItems: 'center' }}>
-          <PieChart
-            data={pieData}
-            width={chartW}
-            height={220}
-            accessor="population"
-            backgroundColor="transparent"
-            hasLegend={false}          // Oculta las leyendas
-            chartConfig={{
-              backgroundGradientFrom: '#1C1C1E',
-              backgroundGradientTo: '#1C1C1E',
-              color: (opacity = 1) => `rgba(255,255,255,${opacity})`,
-              labelColor: () => 'transparent' // Oculta los textos dentro
-            }}
-            style={{
-              borderRadius: 12,
-              marginVertical: 8,
-              borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.06)',
-              overflow: 'hidden'
-            }}
-          />
-        </View>
+        <View
+  style={{
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 20,
+    borderWidth: 2,
+    
+    borderRadius: 16,
+    paddingVertical: 15,
+  }}
+>
+  <PieChart
+    data={pieData}
+    width={winW * 0.96} // Usa el 90% del ancho de la pantalla para centrarlo mejor
+    height={220}
+    accessor="population"
+    backgroundColor="transparent"
+    hasLegend={false}   
+    chartConfig={{
+      backgroundGradientFrom: '#1C1C1E',
+      backgroundGradientTo: '#1C1C1E',
+      color: (opacity = 1) => `rgba(255,255,255,${opacity})`,
+      labelColor: () => 'transparent',
+    }}
+    style={{
+      borderRadius: 12,
+      marginVertical: 8,
+      marginLeft:180,
+      alignSelf: 'center', // Asegura el centrado dentro del contenedor
+    }}
+  />
+</View>
+
 
         </View>
       </View>
@@ -424,12 +394,15 @@ export default function Home({ navigation }) {
 
 const styles = StyleSheet.create({
   // Fondo
-  background: { flex: 1, width: '100%', height: '100%' },
-  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' },
+  background: { flex: 1, 
+    width: '100%', 
+    height: '100%' },
+  dim: { ...StyleSheet.absoluteFillObject, 
+    backgroundColor: 'rgba(0,0,0,0.65)' },
 
   // Header
   header: {
-    paddingTop: 52,
+    paddingTop: 50,
     paddingBottom: 12,
     paddingHorizontal: 18,
     backgroundColor: 'black',
@@ -437,13 +410,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between'
   },
-  headerBrand: { flexDirection: 'row', alignItems: 'center' },
-  headerLogo: { width: 28, height: 28, borderRadius: 6, marginRight: 8 },
-  iconBtn: { padding: 8, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
-  headerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
+  headerBrand: { flexDirection: 'row', 
+    alignItems: 'center' },
+  headerLogo: { width: 28, 
+    height: 28, 
+    borderRadius: 6, 
+    marginRight: 8 },
+  iconBtn: { padding: 8, 
+    borderRadius: 8, 
+    backgroundColor: 'rgba(255,255,255,0.08)' },
+  headerTitle: { color: '#FFFFFF', 
+    fontSize: 18, 
+    fontWeight: '700', 
+    letterSpacing: 0.3 },
 
-  // Hero / marca
-  hero: { paddingHorizontal: 18, paddingTop: 10 },
+   // marca
+  hero: { paddingHorizontal: 18, 
+    paddingTop: 10 },
+
   brandRow: {
     backgroundColor: 'rgba(20,20,20,0.75)',
     borderRadius: 14,
@@ -451,9 +435,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)'
   },
-  logo: { width: 42, height: 42, borderRadius: 10 },
-  brandTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-  brandSubtitle: { color: '#CFCFCF', fontSize: 12, marginTop: 2 },
+  logo: { width: 42, 
+    height: 42, 
+    borderRadius: 10 },
+  brandTitle: { color: '#FFFFFF', 
+    fontSize: 18, 
+    fontWeight: '700' },
+  brandSubtitle: { color: '#CFCFCF', 
+    fontSize: 12, 
+    marginTop: 2 },
 
   // Contenido
   content: {
@@ -476,14 +466,30 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
     backgroundColor: '#2C2C2E'
   },
-  kpiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  kpiLabel: { color: '#E0E0E0', fontSize: 12, marginLeft: 8 },
-  kpiValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', letterSpacing: 0.2 },
+  kpiHeader: { flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 10 },
+  kpiLabel: { color: '#E0E0E0', 
+    fontSize: 12, 
+    marginLeft: 8 },
+  kpiValue: { color: '#FFFFFF', 
+    fontSize: 20, 
+    fontWeight: '800', 
+    letterSpacing: 0.2 },
 
   // Secciones / Cards
-  section: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.2, alignSelf: 'center' },
+  section: { paddingHorizontal: 18, 
+    paddingTop: 18, 
+    paddingBottom: 10 },
+  sectionHeader: { flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 12 },
+  sectionTitle: { color: '#FFFFFF', 
+    fontSize: 16, 
+    fontWeight: '700', 
+    letterSpacing: 0.2, 
+    alignSelf: 'center' },
   card: {
     backgroundColor: 'rgba(28,28,30,0.9)',
     borderRadius: 14,
@@ -500,13 +506,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)'
   },
-  resumenTotalText: { color: '#76D275', fontSize: 28, fontWeight: '900', alignSelf: 'center' },
-  resumenTotalLabel: { color: '#C9C9C9', fontSize: 12, marginTop: 4, alignSelf: 'center' },
+  resumenTotalText: { color: '#76D275', 
+    fontSize: 28, 
+    fontWeight: '900', 
+    alignSelf: 'center' },
+  resumenTotalLabel: { color: '#C9C9C9', 
+    fontSize: 12, 
+    marginTop: 4, 
+    alignSelf: 'center' },
   resumenDetalle: { paddingTop: 12 },
-  resumenItem: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
-  resumenDot: { width: 10, height: 10, borderRadius: 6, marginRight: 10 },
-  resumenLabel: { flex: 1, color: '#E0E0E0', fontSize: 14 },
-  resumenValue: { color: '#FFFFFF', fontWeight: '700' },
+  resumenItem: { flexDirection: 'row', 
+    alignItems: 'center', 
+    marginVertical: 8 },
+  resumenDot: { width: 10, 
+    height: 10, 
+    borderRadius: 6, 
+    marginRight: 10 },
+  resumenLabel: { flex: 1, 
+    color: '#E0E0E0', 
+    fontSize: 14 },
+  resumenValue: { color: '#FFFFFF', 
+    fontWeight: '700' },
 
   // Pedidos
   pedidoCard: {
@@ -517,15 +537,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)'
   },
-  pedidoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  pedidoId: { fontSize: 14, fontWeight: '800', color: '#FFFFFF' },
-  estadoBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  estadoText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
-  pedidoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  pedidoRowEnd: { flexDirection: 'row', alignItems: 'center', marginTop: 8, justifyContent: 'flex-end' },
-  pedidoMesa: { fontSize: 13, color: '#D6D6D6', marginLeft: 8 },
-  pedidoEmpleado: { fontSize: 12, color: '#BDBDBD', marginLeft: 8 },
-  pedidoTotal: { fontSize: 14, color: '#76D275', fontWeight: '800', marginLeft: 6 },
+  pedidoHeader: { flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 8 },
+  pedidoId: { fontSize: 14, 
+    fontWeight: '800', 
+    color: '#FFFFFF' },
+  estadoBadge: { paddingHorizontal: 10, 
+    paddingVertical: 4, 
+    borderRadius: 20 },
+  estadoText: { color: '#FFFFFF', 
+    fontSize: 10, 
+    fontWeight: '800' },
+  pedidoRow: { flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 4 },
+  pedidoRowEnd: { flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: 8, 
+    justifyContent: 'flex-end' },
+  pedidoMesa: { fontSize: 13, 
+    color: '#D6D6D6', 
+    marginLeft: 8 },
+  pedidoEmpleado: { fontSize: 12, 
+    color: '#BDBDBD', 
+    marginLeft: 8 },
+  pedidoTotal: { fontSize: 14, 
+    color: '#76D275', 
+    fontWeight: '800', 
+    marginLeft: 6 },
 
   // Botones
   ghostBtn: {
@@ -535,7 +576,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)'
   },
-  ghostBtnText: { color: '#EDEDED', fontWeight: '700', fontSize: 12, letterSpacing: 0.3 },
+  ghostBtnText: { color: '#EDEDED', 
+    fontWeight: '700', 
+    fontSize: 12, 
+    letterSpacing: 0.3 },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -544,17 +588,33 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10
   },
-  primaryBtnText: { color: '#0D0D0D', fontWeight: '800', marginLeft: 8 },
+  primaryBtnText: { color: '#0D0D0D', 
+    fontWeight: '800', 
+    marginLeft: 8 },
 
   // Placeholder
-  placeholderContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 36 },
-  placeholderTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF', marginTop: 18, marginBottom: 10 },
-  placeholderText: { fontSize: 14, color: '#C9C9C9', textAlign: 'center', marginBottom: 24 },
+  placeholderContent: { flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    padding: 36 },
+  placeholderTitle: { fontSize: 18, 
+    fontWeight: '800', 
+    color: '#FFFFFF', 
+    marginTop: 18, 
+    marginBottom: 10 },
+  placeholderText: { fontSize: 14, 
+    color: '#C9C9C9', 
+    textAlign: 'center', 
+    marginBottom: 24 },
 
   // Modal / menú lateral
-  modalOverlay: { flex: 1, flexDirection: 'row' },
-  menuModal: { width: '78%', backgroundColor: 'rgba(18,18,18,0.98)', paddingTop: 46 },
-  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalOverlay: { flex: 1, 
+    flexDirection: 'row' },
+  menuModal: { width: '78%', 
+    backgroundColor: 'rgba(18,18,18,0.98)', 
+    paddingTop: 46 },
+  modalBackground: { flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.45)' },
 
   menuHeader: {
     flexDirection: 'row',
@@ -565,10 +625,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)'
   },
-  menuHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
-  menuLogo: { width: 28, height: 28, borderRadius: 8, marginRight: 10 },
-  menuHeaderTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  menuContent: { flex: 1, paddingTop: 8 },
+  menuHeaderLeft: { flexDirection: 'row', 
+    alignItems: 'center' },
+  menuLogo: { width: 28, 
+    height: 28, 
+    borderRadius: 8, 
+    marginRight: 10 },
+  menuHeaderTitle: { color: '#FFFFFF', 
+    fontSize: 16, 
+    fontWeight: '800' },
+  menuContent: { flex: 1, 
+    paddingTop: 8 },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -581,12 +648,24 @@ const styles = StyleSheet.create({
     borderRightWidth: 3,
     borderRightColor: '#FFD54F'
   },
-  menuText: { color: '#EDEDED', marginLeft: 14, fontSize: 15 },
-  menuTextActive: { color: '#FFD54F', fontWeight: '800' },
+  menuText: { color: '#EDEDED', 
+    marginLeft: 14, 
+    fontSize: 15 },
+  menuTextActive: { color: '#FFD54F', 
+    fontWeight: '800' },
 
   // Perfil
-  dropdownOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 30 },
-  overlayTouchable: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  dropdownOverlay: { position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    bottom: 0, 
+    zIndex: 30 },
+  overlayTouchable: { position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    ight: 0, 
+    bottom: 0 },
   profileMenu: {
     position: 'absolute',
     top: 78,
@@ -599,9 +678,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)'
   },
-  profileGreeting: { fontWeight: '800', color: '#FFFFFF', marginBottom: 8 },
-  profileMenuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  profileMenuText: { color: '#EDEDED', fontSize: 14, marginLeft: 8 }
+  profileGreeting: { fontWeight: '800', 
+    color: '#FFFFFF', 
+    marginBottom: 8 },
+  profileMenuItem: { flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 10 },
+  profileMenuText: { color: '#EDEDED', 
+    fontSize: 14, 
+    marginLeft: 8 }
 });
 
 

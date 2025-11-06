@@ -1,14 +1,21 @@
-// screens/EditarInsumo.js
+// EditarInsumo.js 
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, InputAccessoryView, Keyboard, Alert
+  KeyboardAvoidingView, Platform, ScrollView, InputAccessoryView, Keyboard, Alert, Image, ActivityIndicator
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
+import * as ImagePicker from 'expo-image-picker';
+
 import { auth, db } from '../src/config/firebaseConfig';
 import {
   doc, updateDoc, serverTimestamp, collection, query, where, getDocs
 } from 'firebase/firestore';
+
+// ====== CLOUDINARY (igual que en Agregar/Perfil) ======
+const CLOUD_NAME = 'ddyf7ez3d';
+const UPLOAD_PRESET = 'Upload';
+const UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
 
 export default function EditarInsumo({ route, navigation }) {
   const { insumo } = route.params || {};
@@ -19,6 +26,11 @@ export default function EditarInsumo({ route, navigation }) {
   const [stockMin, setStockMin] = useState(String(insumo?.stockMin ?? ''));
   const [stockMax, setStockMax] = useState(String(insumo?.stockMax ?? ''));
   const [estado, setEstado] = useState(insumo?.estado || null);
+
+  // Imagen: actual, preview nueva y estado de subida
+  const [currentImageUrl, setCurrentImageUrl] = useState(insumo?.imageUrl || null);
+  const [tempImageUri, setTempImageUri] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -40,15 +52,12 @@ export default function EditarInsumo({ route, navigation }) {
   ]);
 
   // IDs únicos para cada input numérico (iOS)
-  const accIds = {
-    stock: 'accStock',
-    rep: 'accRep',
-    min: 'accMin',
-    max: 'accMax',
-  };
+  const accIds = { stock: 'accStock', rep: 'accRep', min: 'accMin', max: 'accMax' };
 
+  const normalizeDigits = (t) => String(t).replace(/\D+/g, '').slice(0, 8); // <= 8 dígitos
   const parseIntSafe = (v) => {
-    const n = parseInt(String(v).replace(/\D+/g, ''), 10);
+    const only = String(v).replace(/\D+/g, '').slice(0, 8);
+    const n = parseInt(only, 10);
     return Number.isFinite(n) ? n : NaN;
   };
   const normalizeName = (s) => s.replace(/\s+/g, '').toLowerCase();
@@ -63,7 +72,44 @@ export default function EditarInsumo({ route, navigation }) {
     }
   }, [insumo?.id]);
 
-  const handleGuardar = async () => {
+  const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1], // cuadrado
+      quality: 0.85,
+    });
+    if (!result.canceled) setTempImageUri(result.assets?.[0]?.uri || null);
+  };
+
+  const uploadImageIfAny = async () => {
+    if (!tempImageUri) return null;
+    try {
+      setUploading(true);
+      const data = new FormData();
+      data.append('file', { uri: tempImageUri, type: 'image/jpeg', name: 'insumo.jpg' });
+      data.append('upload_preset', UPLOAD_PRESET);
+      data.append('folder', 'insumos');
+
+      const res = await fetch(UPLOAD_URL, { method: 'POST', body: data });
+      const json = await res.json();
+      return json?.secure_url || null;
+    } catch (e) {
+      console.log('upload insumo image error', e);
+      Alert.alert('Error', 'No se pudo subir la imagen.');
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // separo el guardado real en una función para llamarla luego de confirmar
+  const proceedGuardar = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
       Alert.alert('Sesión', 'No hay un usuario autenticado.');
@@ -78,7 +124,8 @@ export default function EditarInsumo({ route, navigation }) {
       !String(puntoReposicion).trim() &&
       !String(stockMin).trim() &&
       !String(stockMax).trim() &&
-      !estado
+      !estado &&
+      !tempImageUri
     ) {
       setAllEmpty(true);
       setErrors({});
@@ -106,7 +153,7 @@ export default function EditarInsumo({ route, navigation }) {
     const sRep = parseIntSafe(puntoReposicion);
 
     if ([sAct, sMin, sMax, sRep].some((n) => Number.isNaN(n))) {
-      setErrors({ ...newErrors, formato: 'Los valores deben ser numéricos válidos.' });
+      setErrors({ ...newErrors, formato: 'Los valores deben ser numéricos válidos (máx. 8 dígitos).' });
       return;
     }
     if (sAct < 0 || sMin < 0 || sMax < 0 || sRep < 0) {
@@ -128,6 +175,11 @@ export default function EditarInsumo({ route, navigation }) {
 
     try {
       setSaving(true);
+
+      // subir imagen si hay nueva
+      const newImageUrl = await uploadImageIfAny();
+      const finalImage = newImageUrl || currentImageUrl || null;
+
       const payload = {
         nombre: nombre.trim(),
         nombreNorm: normalizeName(nombre),
@@ -137,13 +189,14 @@ export default function EditarInsumo({ route, navigation }) {
         stockMin: sMin,
         stockMax: sMax,
         estado,
+        imageUrl: finalImage,
         updatedAt: serverTimestamp(),
       };
 
       // Actualiza doc global
       await updateDoc(doc(db, 'insumos', insumo.id), payload);
 
-      // Actualiza doc del usuario (si existe con ese globalId)
+      // Actualiza doc del usuario 
       const qUser = query(collection(db, 'users', uid, 'insumos'), where('globalId', '==', insumo.id));
       const snapUser = await getDocs(qUser);
       for (const d of snapUser.docs) {
@@ -160,10 +213,44 @@ export default function EditarInsumo({ route, navigation }) {
     }
   };
 
+
+  //  primero pregunta confirmación, y si confirmás, llama a proceedGuardar()
+  const handleGuardar = () => {
+    Alert.alert(
+      'Confirmación',
+      '¿Estás seguro que quieres hacer estos cambios?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Guardar', onPress: proceedGuardar },
+      ],
+      { cancelable: true }
+    );
+  };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#121212' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Editar Insumo</Text>
+
+        {/* Imagen (opcional) */}
+        <Text style={styles.label}>Imagen (opcional)</Text>
+        <View style={styles.imageRow}>
+          {tempImageUri ? (
+            <Image source={{ uri: tempImageUri }} style={styles.imageSquare} />
+          ) : currentImageUrl ? (
+            <Image source={{ uri: currentImageUrl }} style={styles.imageSquare} />
+          ) : (
+            <View style={[styles.imageSquare, styles.imagePlaceholder]}>
+              <Text style={{ color: '#888', fontSize: 12 }}>Sin imagen</Text>
+            </View>
+          )}
+
+          <View style={{ marginLeft: 12, justifyContent: 'center' }}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={pickImage} disabled={uploading || saving}>
+              {uploading ? <ActivityIndicator /> : <Text style={styles.secondaryBtnText}>Elegir imagen</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* Nombre */}
         <Text style={styles.label}>Nombre *</Text>
@@ -200,13 +287,13 @@ export default function EditarInsumo({ route, navigation }) {
         </View>
         {errors.unidad && <Text style={styles.errorText}>{errors.unidad}</Text>}
 
-        {/* NUMÉRICOS: cada uno con su propio inputAccessoryViewID */}
+        {/* NUMÉRICOS */}
         <Text style={styles.label}>Stock actual *</Text>
         <TextInput
           placeholder="0"
           placeholderTextColor="#aaa"
           value={stockActual}
-          onChangeText={(t) => { setStockActual(t); clearAllEmpty(); clearError('stockActual'); }}
+          onChangeText={(t) => { setStockActual(normalizeDigits(t)); clearAllEmpty(); clearError('stockActual'); }}
           keyboardType="number-pad"
           style={styles.input}
           returnKeyType="done"
@@ -221,7 +308,7 @@ export default function EditarInsumo({ route, navigation }) {
           placeholder="Ej. 10"
           placeholderTextColor="#aaa"
           value={puntoReposicion}
-          onChangeText={(t) => { setPuntoReposicion(t); clearAllEmpty(); clearError('puntoReposicion'); }}
+          onChangeText={(t) => { setPuntoReposicion(normalizeDigits(t)); clearAllEmpty(); clearError('puntoReposicion'); }}
           keyboardType="number-pad"
           style={styles.input}
           returnKeyType="done"
@@ -236,7 +323,7 @@ export default function EditarInsumo({ route, navigation }) {
           placeholder="Ej. 5"
           placeholderTextColor="#aaa"
           value={stockMin}
-          onChangeText={(t) => { setStockMin(t); clearAllEmpty(); clearError('stockMin'); }}
+          onChangeText={(t) => { setStockMin(normalizeDigits(t)); clearAllEmpty(); clearError('stockMin'); }}
           keyboardType="number-pad"
           style={styles.input}
           returnKeyType="done"
@@ -251,7 +338,7 @@ export default function EditarInsumo({ route, navigation }) {
           placeholder="Ej. 100"
           placeholderTextColor="#aaa"
           value={stockMax}
-          onChangeText={(t) => { setStockMax(t); clearAllEmpty(); clearError('stockMax'); }}
+          onChangeText={(t) => { setStockMax(normalizeDigits(t)); clearAllEmpty(); clearError('stockMax'); }}
           keyboardType="number-pad"
           style={styles.input}
           returnKeyType="done"
@@ -283,11 +370,14 @@ export default function EditarInsumo({ route, navigation }) {
         </View>
         {errors.estado && <Text style={styles.errorText}>{errors.estado}</Text>}
 
+        {/* Nota de obligatoriedad */}
+        <Text style={styles.noteText}>Los campos con * son obligatorios</Text>
+
         {/* Mensaje global si todo está vacío */}
         {allEmpty && <Text style={styles.allEmptyText}>Todos los campos son obligatorios</Text>}
 
         {/* Botones */}
-        <TouchableOpacity style={[styles.saveButton, { opacity: saving ? 0.6 : 1 }]} onPress={handleGuardar} disabled={saving}>
+        <TouchableOpacity style={[styles.saveButton, { opacity: saving ? 0.6 : 1 }]} onPress={handleGuardar} disabled={saving || uploading}>
           <Text style={styles.saveButtonText}>{saving ? 'Guardando…' : 'Guardar cambios'}</Text>
         </TouchableOpacity>
 
@@ -296,39 +386,20 @@ export default function EditarInsumo({ route, navigation }) {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Barras “Listo” (iOS): una por cada campo */}
+      {/* Barras “Listo” (iOS) */}
       {Platform.OS === 'ios' && (
         <>
           <InputAccessoryView nativeID={accIds.stock}>
-            <View style={styles.accessoryBar}>
-              <TouchableOpacity onPress={onDone} style={styles.accessoryBtn}>
-                <Text style={styles.accessoryText}>Listo</Text>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.accessoryBar}><TouchableOpacity onPress={onDone} style={styles.accessoryBtn}><Text style={styles.accessoryText}>Listo</Text></TouchableOpacity></View>
           </InputAccessoryView>
-
           <InputAccessoryView nativeID={accIds.rep}>
-            <View style={styles.accessoryBar}>
-              <TouchableOpacity onPress={onDone} style={styles.accessoryBtn}>
-                <Text style={styles.accessoryText}>Listo</Text>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.accessoryBar}><TouchableOpacity onPress={onDone} style={styles.accessoryBtn}><Text style={styles.accessoryText}>Listo</Text></TouchableOpacity></View>
           </InputAccessoryView>
-
           <InputAccessoryView nativeID={accIds.min}>
-            <View style={styles.accessoryBar}>
-              <TouchableOpacity onPress={onDone} style={styles.accessoryBtn}>
-                <Text style={styles.accessoryText}>Listo</Text>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.accessoryBar}><TouchableOpacity onPress={onDone} style={styles.accessoryBtn}><Text style={styles.accessoryText}>Listo</Text></TouchableOpacity></View>
           </InputAccessoryView>
-
           <InputAccessoryView nativeID={accIds.max}>
-            <View style={styles.accessoryBar}>
-              <TouchableOpacity onPress={onDone} style={styles.accessoryBtn}>
-                <Text style={styles.accessoryText}>Listo</Text>
-              </TouchableOpacity>
-            </View>
+            <View style={styles.accessoryBar}><TouchableOpacity onPress={onDone} style={styles.accessoryBtn}><Text style={styles.accessoryText}>Listo</Text></TouchableOpacity></View>
           </InputAccessoryView>
         </>
       )}
@@ -336,13 +407,46 @@ export default function EditarInsumo({ route, navigation }) {
   );
 }
 
+const IMAGE_SIZE = 90;
+
 const styles = StyleSheet.create({
   container: { padding: 20 },
-  title: { color: '#FFD54F', fontSize: 22, fontWeight: 'bold', marginBottom: 16 },
-  label: { color: '#FFD54F', fontWeight: '700', marginTop: 10, marginBottom: 6 },
+  title: { color: '#FFD54F', 
+    fontSize: 22, 
+    fontWeight: 'bold', 
+    marginBottom: 16 },
+  label: { color: '#FFD54F', 
+    fontWeight: '700', 
+    marginTop: 10, 
+    marginBottom: 6 },
 
-  errorText: { color: '#FF6B6B', marginTop: 4, fontSize: 13 },
-  allEmptyText: { color: '#FF6B6B', textAlign: 'center', fontSize: 15, marginTop: 10, marginBottom: 5 },
+  // Imagen
+  imageRow: { flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 6 },
+  imageSquare: { width: IMAGE_SIZE, 
+    height: IMAGE_SIZE, 
+    borderRadius: 8, 
+    backgroundColor: '#111' },
+  imagePlaceholder: { borderWidth: 1, 
+    borderColor: '#333', 
+    alignItems: 'center', 
+    justifyContent: 'center' },
+  secondaryBtn: { backgroundColor: '#333', 
+    paddingVertical: 10, 
+    paddingHorizontal: 12, 
+    borderRadius: 8 },
+  secondaryBtnText: { color: '#FFF', 
+    fontWeight: '700' },
+
+  errorText: { color: '#FF6B6B', 
+    marginTop: 4, 
+    fontSize: 13 },
+  allEmptyText: { color: '#FF6B6B', 
+    textAlign: 'center', 
+    fontSize: 15, 
+    marginTop: 10, 
+    marginBottom: 5 },
 
   input: {
     backgroundColor: '#1E1E1E',
@@ -353,20 +457,52 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
 
-  dropdown: { backgroundColor: '#1E1E1E', borderColor: '#333', minHeight: 46 },
-  dropdownContainer: { backgroundColor: '#1E1E1E', borderColor: '#333' },
+  dropdown: { backgroundColor: '#1E1E1E', 
+    borderColor: '#333', 
+    minHeight: 46 },
+  dropdownContainer: { backgroundColor: '#1E1E1E', 
+    borderColor: '#333' },
   dropdownItemLabel: { color: '#FFF' },
   dropdownPlaceholder: { color: '#888' },
 
-  saveButton: { backgroundColor: '#FFD54F', padding: 14, borderRadius: 10, alignItems: 'center', marginTop: 16 },
-  saveButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
-  cancelButton: { backgroundColor: '#333', padding: 14, borderRadius: 10, alignItems: 'center', marginTop: 10 },
-  cancelButtonText: { color: '#FFF', fontSize: 16 },
+  saveButton: { backgroundColor: '#FFD54F', 
+    padding: 14, 
+    borderRadius: 10, 
+    alignItems: 'center', 
+    marginTop: 16 },
+  saveButtonText: { color: '#000', 
+    fontWeight: 'bold', 
+    fontSize: 16 },
+  cancelButton: { backgroundColor: '#333', 
+    padding: 14, 
+    borderRadius: 10, 
+    alignItems: 'center', 
+    marginTop: 10 },
+  cancelButtonText: { color: '#FFF', 
+    fontSize: 16 },
 
-  accessoryBar: { backgroundColor: '#1E1E1E', borderTopColor: '#333', borderTopWidth: 1, padding: 8, alignItems: 'flex-end' },
-  accessoryBtn: { backgroundColor: '#FFD54F', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
-  accessoryText: { color: '#000', fontWeight: '700' },
+  accessoryBar: { backgroundColor: '#1E1E1E', 
+    borderTopColor: '#333', 
+    borderTopWidth: 1, 
+    padding: 8, 
+    alignItems: 'flex-end' },
+  accessoryBtn: { backgroundColor: '#FFD54F', 
+    paddingVertical: 6, 
+    paddingHorizontal: 12, 
+    borderRadius: 8 },
+  accessoryText: { color: '#000', 
+    fontWeight: '700' },
+  noteText: {
+    color: '#FFD54F',
+    fontSize: 13,
+    textAlign: '',
+    marginTop: 6,
+    marginBottom: 4,
+    fontStyle: 'italic',
+  },
 });
+
+
 
 
 
